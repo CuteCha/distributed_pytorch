@@ -17,7 +17,7 @@ def train():
     local_rank = int(os.environ["LOCAL_RANK"])
     rank = int(os.environ["RANK"])
     while True:
-        print(f"[{os.getpid()}] (rank = {rank}, local_rank = {local_rank}) training...")
+        print(f"[pid: {os.getpid()}] (rank = {rank}, local_rank = {local_rank}) training...")
         sleep(1)
 
 
@@ -26,7 +26,7 @@ def run():
         key: os.environ[key]
         for key in ("MASTER_ADDR", "MASTER_PORT", "WORLD_SIZE", "LOCAL_WORLD_SIZE")
     }
-    print(f"[{os.getpid()}] Initializing process group with: {env_dict}")
+    print(f"[pid: {os.getpid()}] Initializing process group with: {env_dict}")
     dist.init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=60))
     train()
     dist.destroy_process_group()
