@@ -8,7 +8,19 @@ import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from datetime import datetime
+import argparse
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--bs', type=int, default=128, help="batch size")
+    parser.add_argument('--lr', type=float, default=0.001, help="learn rate")
+    parser.add_argument('--epochs', type=int, default=5, help="train epoch")
+    parser.add_argument('--ckpt_path', type=str, default="tmp.pt", help="ckpt path")
+    parser.add_argument('--train_data_dir', type=str, default="./data", help="train data dir")   
+    
+    args = parser.parse_args()
+
+    return args
 
 class Model(nn.Module):
     def __init__(self, num_classes=10):
@@ -76,105 +88,19 @@ def evaluate(model, device_id, test_loader, rank):
     print("evaluate done")
 
 
-def train(ddp_model, loss_fn, optimizer, device_id, train_loader, rank):
-    ckpt_path = 'tmp.pth'
-    epochs = 2
+def train(model, loss_fn, optimizer, device_id, train_loader, rank, args):
+    ckpt_path = args.ckpt_path 
+    epochs = args.epochs 
 
     start = datetime.now()
     total_step = len(train_loader)
     for epoch in range(epochs):
         train_loader.sampler.set_epoch(epoch)
-        ddp_model.train()
+        model.train()
         for i, (images, labels) in enumerate(tqdm(train_loader) if rank == 0 else train_loader):
             images = images.to(device_id)
             labels = labels.to(device_id)
-            outputs = ddp_model(images)
-            loss = loss_fn(outputs, labels)
-
-            loss.backward()
-            optimizer.zero_grad()
-            optimizer.step()
-
-            if (i + 1) % 100 == 0 and rank == 0:
-                print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.
-                      format(epoch + 1, epochs, i + 1, total_step, loss.item()))
-        evaluate(ddp_model, device_id, train_loader, rank)
-
-    if rank == 0:
-        print("Training complete in: " + str(datetime.now() - start))
-        torch.save(ddp_model.state_dict(), ckpt_path)
-        print("ckpt done.")
-
-
-def main():
-    batch_size = 4
-    dist.init_process_group("nccl")
-    rank = dist.get_rank()
-    pid = os.getpid()
-    device_count = torch.cuda.device_count()
-    print(f'current pid: {pid}; current rank {rank}; total device count: {device_count}')
-    device_id = rank % device_count
-
-    model = Model().to(device_id)
-    ddp_model = DDP(model, device_ids=[device_id])
-
-    loss_fn = nn.CrossEntropyLoss().to(device_id)
-    optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
-
-    train_dataset = torchvision.datasets.MNIST(root='./data',
-                                               train=True,
-                                               transform=transforms.ToTensor(),
-                                               download=True)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                               batch_size=batch_size,
-                                               shuffle=False,
-                                               num_workers=0,
-                                               pin_memory=True,
-                                               sampler=train_sampler)
-
-    train(ddp_model, loss_fn, optimizer, device_id, train_loader, rank)
-
-
-def main01():
-    ckpt_path = 'tmp.pth'
-    epochs = 2
-    batch_size = 4
-    dist.init_process_group("nccl")
-
-    rank = dist.get_rank()
-    pid = os.getpid()
-    device_count = torch.cuda.device_count()
-    print(f'current pid: {pid}; current rank {rank}; total device count: {device_count}')
-    device_id = rank % device_count
-
-    model = Model().to(device_id)
-    ddp_model = DDP(model, device_ids=[device_id])
-
-    loss_fn = nn.CrossEntropyLoss().to(device_id)
-    optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
-
-    train_dataset = torchvision.datasets.MNIST(root='./data',
-                                               train=True,
-                                               transform=transforms.ToTensor(),
-                                               download=True)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                               batch_size=batch_size,
-                                               shuffle=False,
-                                               num_workers=0,
-                                               pin_memory=True,
-                                               sampler=train_sampler)
-
-    start = datetime.now()
-    total_step = len(train_loader)
-    for epoch in range(epochs):
-        train_loader.sampler.set_epoch(epoch)
-        ddp_model.train()
-        for i, (images, labels) in enumerate(tqdm(train_loader) if rank == 0 else train_loader):
-            images = images.to(device_id)
-            labels = labels.to(device_id)
-            outputs = ddp_model(images)
+            outputs = model(images)
             loss = loss_fn(outputs, labels)
 
             loss.backward()
@@ -188,12 +114,43 @@ def main01():
 
     if rank == 0:
         print("Training complete in: " + str(datetime.now() - start))
-        torch.save(ddp_model.state_dict(), ckpt_path)
+        torch.save(model.state_dict(), ckpt_path)
         print("ckpt done.")
 
-    dist.barrier()
-    dist.destroy_process_group()
 
+def main():
+    args = parse_args()
+    batch_size = args.bs
+    lr = args.lr
+    train_data_dir = args.train_data_dir
+
+    dist.init_process_group("nccl")
+    rank = dist.get_rank()
+    pid = os.getpid()
+    device_count = torch.cuda.device_count()
+    print(f'current pid: {pid}; current rank {rank}; total device count: {device_count}')
+    device_id = rank % device_count
+
+    model = Model().to(device_id)
+    ddp_model = DDP(model, device_ids=[device_id])
+
+    loss_fn = nn.CrossEntropyLoss().to(device_id)
+    optimizer = optim.SGD(ddp_model.parameters(), lr=lr)
+
+    train_dataset = torchvision.datasets.MNIST(root=train_data_dir,
+                                               train=True,
+                                               transform=transforms.ToTensor(),
+                                               download=True)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
+                                               batch_size=batch_size,
+                                               shuffle=False,
+                                               num_workers=0,
+                                               pin_memory=True,
+                                               sampler=train_sampler)
+
+    train(ddp_model, loss_fn, optimizer, device_id, train_loader, rank, args)
+    
 
 if __name__ == "__main__":
     main()

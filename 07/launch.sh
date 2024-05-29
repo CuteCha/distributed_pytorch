@@ -9,4 +9,8 @@ torchrun --nnodes=2 \
          --rdzv_id=100 \
          --rdzv_backend=c10d \
          --rdzv_endpoint=${MASTER_ADDR}:${MASTER_PORT} \
-         main.py
+         main.py \
+         --bs 16 \
+         --epochs=8 \
+         --ckpt_path="tmp.pt" \
+         --train_data_dir="./data"
