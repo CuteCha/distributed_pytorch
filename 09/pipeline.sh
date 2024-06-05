@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0,1
 export OMP_NUM_THREADS=2 
-export MASTER_ADDR="172.18.0.11" #hostname if /etc/hosts add
+export MASTER_ADDR="172.28.0.11" #hostname if /etc/hosts add
 export MASTER_PORT="12355"
 
 #train model
@@ -19,7 +19,7 @@ torchrun --nnodes=2 \
 #lauch model [in master node]
 echo "publish model ......"
 sleep 30s
-nodeIP=`ifconfig eth0 | grep inet | awk '{print $2}'` #`hostname -I`
+nodeIP=`ifconfig eth0 | grep inet | awk '{print $2}'` #`hostname -I | awk '{print $1}'`
 #[ "$nodeIP" = "$MASTER_ADDR" ] && cp model.pt /workspace/workflow/
 if [ "$nodeIP" = "$MASTER_ADDR" ]; then
     echo "model releasing...."

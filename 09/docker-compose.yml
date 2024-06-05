@@ -1,0 +1,58 @@
+version: '3.7'
+
+services:
+    master:     
+        image: pytorch201_cuda117:v4 
+        container_name: dist-node01
+        hostname: dist-node01
+        volumes:    
+            - "/home/caoxiaoqiang/workflow:/workspace/workflow"
+        working_dir: /workspace
+        command: bash -c "pwd && nvidia-smi &&  cp -r workflow/09 . && cd 09/ && chmod +x pipeline.sh  && ./pipeline.sh"
+        #command: bash -c "pwd && nvidia-smi"
+        networks:   
+            dis-train-net:
+              ipv4_address: 172.28.0.11
+        extra_hosts:
+          - dist-node01:172.28.0.11
+          - dist-node02:172.28.0.12
+        environment: 
+          - TZ=Asia/Shanghai
+        #docker-compose >= 1.28.0
+        deploy:
+          resources:
+            reservations:
+              devices:
+              - driver: nvidia
+                device_ids: ['0', '1']
+                capabilities: [gpu]
+    worker01:     
+        image: pytorch201_cuda117:v4 
+        container_name: dist-node02
+        hostname: dist-node02
+        volumes:    
+            - "/home/caoxiaoqiang/workflow:/workspace/workflow"
+        working_dir: /workspace
+        command: bash -c "pwd && nvidia-smi &&  cp -r workflow/dist_train_inference . && cd dist_train_inference/ && chmod +x pipeline.sh  && ./pipeline.sh"
+        #command: bash -c "pwd && nvidia-smi && ls workflow/"
+        networks:   
+            dis-train-net:
+              ipv4_address: 172.28.0.12
+        extra_hosts:
+          - dist-node01:172.28.0.11
+          - dist-node02:172.28.0.12
+        environment: 
+          - TZ=Asia/Shanghai
+        deploy:
+          resources:
+            reservations:
+              devices:
+              - driver: nvidia
+                device_ids: ['2', '3']
+                capabilities: [gpu]
+networks:   
+  dis-train-net:
+    driver: bridge  
+    ipam:
+      config:
+      - subnet: 172.28.0.0/16
